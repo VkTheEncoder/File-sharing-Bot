@@ -21,10 +21,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # -------------------- Environment Configuration --------------------
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # Replace with your actual BotFather token
+BOT_TOKEN = "7947042930:AAE14yUT642RjiiwkaM_dgoGazQdh54SkcU"  # Replace with your actual BotFather token
 PRIVATE_CHANNEL_ID = -1002033692655  # Replace with your private channel's ID
 DELETE_AFTER_SECONDS = 15 * 60       # 15 minutes
-BOT_USERNAME = "YourBotUsername"       # e.g., file_sharing_bot03_bot
+BOT_USERNAME = "file_sharing_bot03_bot"       # e.g., file_sharing_bot03_bot
 
 # -------------------- Global Variables --------------------
 # For single-file sharing, we already had share_links; here we reuse it.
