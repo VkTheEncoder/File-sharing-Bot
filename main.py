@@ -4,21 +4,8 @@ import urllib3
 import http.client
 import random
 import string
-import logging
-import threading
 
-from datetime import timedelta
-from flask import Flask
-from telegram import Update
-from telegram.ext import (
-    Updater,
-    CommandHandler,
-    MessageHandler,
-    Filters,
-    CallbackContext
-)
-
-# --------------- Dummy Injection for Python 3.13 ---------------
+# --- Dummy injection for missing urllib3.contrib and its appengine submodule ---
 if not hasattr(urllib3, "contrib"):
     contrib_module = types.ModuleType("urllib3.contrib")
     sys.modules["urllib3.contrib"] = contrib_module
@@ -35,6 +22,21 @@ else:
         urllib3.contrib.appengine.monkeypatch = lambda: None
     if not hasattr(urllib3.contrib.appengine, "is_appengine_sandbox"):
         urllib3.contrib.appengine.is_appengine_sandbox = lambda: False
+
+import logging
+import threading
+
+from datetime import timedelta
+from flask import Flask
+from telegram import Update
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    MessageHandler,
+    Filters,
+    CallbackContext
+)
+
 
 # --------------- Configuration ---------------
 BOT_TOKEN = "7947042930:AAE14yUT642RjiiwkaM_dgoGazQdh54SkcU"
