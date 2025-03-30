@@ -3,5 +3,5 @@ Flask
 shortuuid
 six
 urllib3
-
+psycopg2-binary
 telegram
