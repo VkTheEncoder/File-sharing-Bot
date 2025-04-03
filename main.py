@@ -114,7 +114,7 @@ def get_shortened_url(long_url: str) -> str:
     2. Replace 'YOUR_API_KEY' with your actual API key if needed.
     3. Adjust payload and response parsing based on your API's documentation.
     """
-    api_url = "https://indiaearnx.com"  # <-- Set your API endpoint here
+    api_url = "https://indiaearnx.com/api/shorten"  # <-- Set your API endpoint here
     payload = {"long_url": long_url}
     headers = {
         "Content-Type": "application/json",
