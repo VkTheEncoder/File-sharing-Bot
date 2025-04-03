@@ -132,7 +132,7 @@ def verify_command(update: Update, context: CallbackContext):
     doc = user_verifications_collection.find_one({"user_id": user_id})
     if doc and doc.get("token") == provided_token:
          # Extend verification for 12 more hours
-         new_expiry = datetime.utcnow() + timedelta(hours=12)
+         new_expiry = datetime.utcnow() + timedelta(minutes=2)
          user_verifications_collection.update_one(
              {"user_id": user_id},
              {"$set": {"expires_at": new_expiry}}
