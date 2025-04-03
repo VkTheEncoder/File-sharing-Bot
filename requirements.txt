@@ -6,3 +6,4 @@ six
 psycopg2-binary
 telegram
 pymongo
+requests==2.28.2
