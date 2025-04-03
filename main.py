@@ -2,6 +2,7 @@ import sys
 import types
 import urllib3
 import http.client
+import json  # needed for API call
 
 # --------------- Dummy Injection for Python 3.13 ---------------
 if not hasattr(urllib3, "contrib"):
@@ -26,7 +27,7 @@ import logging
 import random
 import string
 import threading
-from datetime import datetime, timedelta  # added datetime import
+from datetime import datetime, timedelta  # updated to use datetime
 
 from flask import Flask
 from telegram import Update
@@ -56,13 +57,13 @@ MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://soseh50374:WEsff3bG5XrNcu
 mongo_client = MongoClient(MONGO_URI)
 db = mongo_client["telegram_bot"]      # Database name
 links_collection = db["share_links"]     # Collection for share links
-user_verifications_collection = db["user_verifications"]  # Collection for token verifications
+user_verifications_collection = db["user_verifications"]  # Collection for URL shortener verifications
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # --------------- Data Structures ---------------
-# user_sessions stores ephemeral states (like batch session).
+# user_sessions stores ephemeral states (like batch sessions).
 # user_sessions[user_id] = {
 #   "mode": "batch",
 #   "first_msg_id": None,
@@ -96,60 +97,81 @@ def get_share_link(share_id: str):
     """Retrieve a share link document from MongoDB."""
     return links_collection.find_one({"share_id": share_id})
 
-# --------------- Token Verification Functions ---------------
+# --------------- URL Shortener Integration ---------------
+def get_short_url_for_verification(user_id: int, file_link: str):
+    """
+    Use the URL shortener API to shorten the file_link.
+    This call will use the given API key and your URL shortener website
+    to generate a shortened URL that forces the user to solve the challenge.
+    """
+    http = urllib3.PoolManager()
+    # Assuming the shortener API endpoint is at https://indiaearnx.com/api
+    api_url = f"https://{URL_WEBSITE}/api"
+    payload = {
+        "api_key": API_KEY,
+        "url": file_link
+    }
+    encoded_payload = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    try:
+        response = http.request("POST", api_url, body=encoded_payload, headers=headers)
+        if response.status == 200:
+            data = json.loads(response.data.decode("utf-8"))
+            short_url = data.get("short_url")
+            if short_url:
+                expires_at = datetime.utcnow() + timedelta(hours=12)
+                user_verifications_collection.update_one(
+                    {"user_id": user_id},
+                    {"$set": {"short_url": short_url, "expires_at": expires_at}},
+                    upsert=True
+                )
+                return short_url
+            else:
+                logger.error("Shortener API did not return a short_url.")
+                return None
+        else:
+            logger.error(f"Shortener API request failed with status: {response.status}")
+            return None
+    except Exception as e:
+        logger.error(f"Error calling shortener API: {e}")
+        return None
+
 def is_user_verified(user_id: int) -> bool:
-    """Check if the user is verified and within the 12-hour validity."""
+    """Check if the user is verified and within the 12-hour validity period."""
     doc = user_verifications_collection.find_one({"user_id": user_id})
     if doc and "expires_at" in doc:
         if doc["expires_at"] > datetime.utcnow():
             return True
     return False
 
-def create_verification_token(user_id: int, url_website: str, api_key: str):
-    """
-    Generate a random token and simulate an API call to the URL shortener service.
-    In a real implementation, you would perform an HTTP request to the shortener API.
-    """
-    token = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-    # Simulate generating a short URL token using the provided API
-    short_url = f"https://{url_website}/{token}"
-    expires_at = datetime.utcnow() + timedelta(minutes=2)
-    user_verifications_collection.update_one(
-         {"user_id": user_id},
-         {"$set": {"token": token, "expires_at": expires_at}},
-         upsert=True
-    )
-    return token, short_url
-
+# --------------- Verification Commands ---------------
 def verify_command(update: Update, context: CallbackContext):
-    """Handle /verify command to check the token provided by the user."""
+    """
+    Handle /verify command.
+    After the user clicks the URL shortener link and solves the challenge,
+    they are instructed to run /verify to mark themselves verified.
+    """
     user_id = update.effective_user.id
-    args = context.args
-    if not args:
-         update.message.reply_text("Usage: /verify <token>")
-         return
-    provided_token = args[0]
     doc = user_verifications_collection.find_one({"user_id": user_id})
-    if doc and doc.get("token") == provided_token:
-         # Extend verification for 12 more hours
-         new_expiry = datetime.utcnow() + timedelta(minutes=2)
-         user_verifications_collection.update_one(
-             {"user_id": user_id},
-             {"$set": {"expires_at": new_expiry}}
-         )
-         update.message.reply_text("Token verified successfully! You are now verified for 12 hours. Please try accessing your file again.")
+    if doc:
+        new_expiry = datetime.utcnow() + timedelta(hours=12)
+        user_verifications_collection.update_one(
+            {"user_id": user_id},
+            {"$set": {"expires_at": new_expiry}}
+        )
+        update.message.reply_text("Verification successful! You are now verified for 12 hours. Please try accessing your file again.")
     else:
-         update.message.reply_text("Invalid token. Please try again.")
+        update.message.reply_text("No pending verification found. Please try accessing your file to generate a verification link.")
 
 def status_command(update: Update, context: CallbackContext):
-    """Handle /status command to show verification status."""
+    """Handle /status command to show the current verification status."""
     user_id = update.effective_user.id
     doc = user_verifications_collection.find_one({"user_id": user_id})
     if doc and "expires_at" in doc and doc["expires_at"] > datetime.utcnow():
-         remaining = doc["expires_at"] - datetime.utcnow()
-         update.message.reply_text(f"You are verified. Time remaining: {remaining}.")
+        remaining = doc["expires_at"] - datetime.utcnow()
+        update.message.reply_text(f"You are verified. Time remaining: {remaining}.")
     else:
-         update.message.reply_text("You are not verified.")
+        update.message.reply_text("You are not verified.")
 
 # --------------- File Sharing Functions ---------------
 def handle_single_share(update: Update, context: CallbackContext, share_id: str, info: dict):
@@ -207,23 +229,26 @@ def start_command(update: Update, context: CallbackContext):
     """
     /start command.
     If a share_id is provided, check token verification first.
-    If not verified, generate a short URL token and instruct the user to verify.
-    Otherwise, process the share link.
+    If the user is not verified, generate a short URL via your URL shortener API.
+    The user is then instructed to click that link and then run /verify.
     """
     user_id = update.effective_user.id
-    # Enforce token verification on file retrieval
-    if not is_user_verified(user_id):
-         token, short_url = create_verification_token(user_id, URL_WEBSITE, API_KEY)
-         update.message.reply_text(
-             f"You are not verified. Please complete the token verification.\n"
-             f"Click the following link to solve the challenge: {short_url}\n"
-             f"Then type /verify {token} to verify your access."
-         )
-         return
-
     args = context.args
     if args:
         share_id = args[0]
+        if not is_user_verified(user_id):
+            # Prepare the file link that would normally be used to retrieve the file.
+            file_link = f"https://t.me/{BOT_USERNAME}?start={share_id}"
+            short_url = get_short_url_for_verification(user_id, file_link)
+            if short_url:
+                update.message.reply_text(
+                    f"You are not verified. To access the file, please click the link below to solve the challenge:\n{short_url}\n\n"
+                    "After solving it, please run /verify to confirm your verification for the next 12 hours."
+                )
+            else:
+                update.message.reply_text("Error generating verification link. Please try again later.")
+            return
+
         info = get_share_link(share_id)
         if not info:
             update.message.reply_text("Invalid share link. Please check the link and try again.")
@@ -255,7 +280,7 @@ def batch_command(update: Update, context: CallbackContext):
 def forward_handler(update: Update, context: CallbackContext):
     """
     When a file is forwarded from the private channel, handle single-file share or batch logic.
-    This part is used by admins to generate shareable links.
+    This is used by admins to generate shareable links.
     """
     msg = update.message
     user_id = msg.from_user.id
