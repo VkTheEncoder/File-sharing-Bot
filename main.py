@@ -113,7 +113,7 @@ def create_verification_token(user_id: int, url_website: str, api_key: str):
     token = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
     # Simulate generating a short URL token using the provided API
     short_url = f"https://{url_website}/{token}"
-    expires_at = datetime.utcnow() + timedelta(hours=12)
+    expires_at = datetime.utcnow() + timedelta(minutes=2)
     user_verifications_collection.update_one(
          {"user_id": user_id},
          {"$set": {"token": token, "expires_at": expires_at}},
